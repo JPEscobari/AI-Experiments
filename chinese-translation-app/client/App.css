@@ -1,0 +1,12 @@
+.container {
+  max-width: 800px;
+}
+
+pre {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+textarea {
+  font-size: 1.1rem;
+}
