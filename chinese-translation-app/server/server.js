@@ -2,10 +2,10 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const dotenv = require('dotenv');
-const { HfInference } = require('@huggingface/inference');
+const path = require('path');
 
-// Load environment variables from .env file
-dotenv.config();
+// Load environment variables from .env file in the server directory
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -13,63 +13,8 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
-app.use(express.json());
 
-// Log each request to the console
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.path}`);
-  next();
-});
-
-// Initialize Hugging Face Inference
-const hf = new HfInference(process.env.HUGGING_FACE_API_KEY);
-
-// Test endpoint
-app.get('/api/test', (req, res) => {
-  res.json({ message: 'API is working' });
-});
-
-// Routes
-app.post('/api/tokenize', async (req, res) => {
-    try {
-        const { text } = req.body;
-        
-        if(!text) {
-            return res.status(400).json({ error: 'Text is required' });
-        }
-
-        // Using direct fetch to Hugging Face API for tokenization
-        const response = await fetch(
-            "https://api-inference.huggingface.co/models/bert-base-chinese",
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${process.env.HUGGING_FACE_API_KEY}`
-                },
-                body: JSON.stringify({ inputs: text }),
-            }
-        );
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        
-        // Format the response to match what the client expects
-        const formattedResult = {
-            tokens: result[0].map(token => token.word),
-            ids: result[0].map(token => token.id)
-        };
-        
-        res.json(formattedResult);
-    } catch (error) {
-        console.error('Tokenization error:', error);
-        res.status(500).json({ error: 'Failed to Tokenize Text' });
-    }
-});
-
+// Translation endpoint
 app.post('/api/translate', async (req, res) => {
     try {
         const { text } = req.body;
@@ -92,10 +37,13 @@ app.post('/api/translate', async (req, res) => {
         );
         
         if (!response.ok) {
-            throw new Error(`HTTP error! Status: ${response.status}`);
+            const errorText = await response.text();
+            console.log('Error response body:', errorText);
+            throw new Error(`HTTP error! Status: ${response.status}, Body: ${errorText}`);
         }
         
         const result = await response.json();
+        console.log('Translation result:', result);
         
         // Format the response to match what the client expects
         res.json({ translation_text: result[0].translation_text });
@@ -105,7 +53,66 @@ app.post('/api/translate', async (req, res) => {
     }
 });
 
-// Start server
+// Tokenization endpoint - Fixed for sentence transformers
+app.post('/api/tokenize', async (req, res) => {
+    try {
+        const { text } = req.body;
+
+        if(!text) {
+            return res.status(400).json({ error: 'Text is required' });
+        }
+
+        // Try sentence transformer with correct format
+        try {
+            
+            const response = await fetch(
+                "https://api-inference.huggingface.co/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${process.env.HUGGING_FACE_API_KEY}`
+                    },
+                    body: JSON.stringify({ 
+                        inputs: {
+                            "source_sentence": text,
+                            "sentences": [text, "Hello", "你好"]
+                        },
+                        options: {
+                            wait_for_model: true
+                        }
+                    }),
+                }
+            );
+
+            if (response.ok) {
+                const result = await response.json();
+                return res.json({ 
+                    model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                    task: "sentence-similarity",
+                    input: text,
+                    result: result,
+                    success: true
+                });
+            } else {
+                const errorText = await response.text();
+                console.log('Sentence transformer error:', errorText);
+            }
+        } catch (error) {
+            console.log('Sentence transformer failed:', error.message);
+        }
+
+        return res.status(500).json({ 
+            error: 'No suitable tokenization method found',
+            message: 'Consider using different NLP tasks that are supported by Inference API'
+        });
+
+    } catch (error) {
+        console.error('Tokenization error:', error);
+        res.status(500).json({ error: 'Failed to tokenize text' });
+    }
+});
+
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
 });
