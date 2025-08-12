@@ -33,6 +33,7 @@ function App() {
       
       const data = await response.json();
       setTokenizedResult(data);
+      console.log('Tokenized result:', data);
     } catch (err) {
       setError('Failed to tokenize text. Please try again.');
       console.error(err);
@@ -114,14 +115,18 @@ function App() {
           <div className="card-header">Tokenization Result</div>
           <div className="card-body">
             <h5>Tokens:</h5>
-            <pre className="bg-light p-3 rounded">
-              {JSON.stringify(tokenizedResult.tokens, null, 2)}
-            </pre>
+            <ul className="bg-light p-3 rounded">
+              {tokenizedResult.tokens.map((token, idx) => (
+                <li key={idx}>{token}</li>
+              ))}
+            </ul>
             
             <h5>Token IDs:</h5>
-            <pre className="bg-light p-3 rounded">
-              {JSON.stringify(tokenizedResult.ids, null, 2)}
-            </pre>
+            <ul className="bg-light p-3 rounded">
+              {tokenizedResult.ids.map((id, idx) => (
+                <li key={idx}>{id}</li>
+              ))}
+            </ul>
           </div>
         </div>
       )}

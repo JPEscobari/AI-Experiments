@@ -7,8 +7,15 @@ const path = require('path');
 // Load environment variables from .env file in the server directory
 dotenv.config({ path: path.join(__dirname, '.env') });
 
+
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+if (process.env) {
+    console.log(`Environment variables loaded successfully`);
+    console.log(`PORT: ${PORT}`);
+    console.log(`Hugging Face API Key: ${process.env.HUGGING_FACE_API_KEY}`);
+}
 
 // Middleware
 app.use(cors());
@@ -53,63 +60,52 @@ app.post('/api/translate', async (req, res) => {
     }
 });
 
-// Tokenization endpoint - Fixed for sentence transformers
+// Tokenization endpoint
 app.post('/api/tokenize', async (req, res) => {
     try {
         const { text } = req.body;
-
-        if(!text) {
+        if (!text) {
             return res.status(400).json({ error: 'Text is required' });
         }
-
-        // Try sentence transformer with correct format
-        try {
-            
-            const response = await fetch(
-                "https://api-inference.huggingface.co/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${process.env.HUGGING_FACE_API_KEY}`
+        const response = await fetch(
+            "https://api-inference.huggingface.co/models/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${process.env.HUGGING_FACE_API_KEY}`
+                },
+                body: JSON.stringify({
+                    inputs: {
+                        "source_sentence": text,
+                        "sentences": [text]
                     },
-                    body: JSON.stringify({ 
-                        inputs: {
-                            "source_sentence": text,
-                            "sentences": [text, "Hello", "你好"]
-                        },
-                        options: {
-                            wait_for_model: true
-                        }
-                    }),
-                }
-            );
-
-            if (response.ok) {
-                const result = await response.json();
-                return res.json({ 
-                    model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-                    task: "sentence-similarity",
-                    input: text,
-                    result: result,
-                    success: true
-                });
-            } else {
-                const errorText = await response.text();
-                console.log('Sentence transformer error:', errorText);
+                    options: {
+                        wait_for_model: true
+                    }
+                }),
             }
-        } catch (error) {
-            console.log('Sentence transformer failed:', error.message);
+        );
+        if (response.ok) {
+            const result = await response.json();
+            console.log('Sentence transformer result:', result);
+            // Return the input sentences as tokens and the result array as ids
+            return res.json({
+                tokens: [text],
+                ids: result,
+                model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                task: "sentence-similarity",
+                input: text,
+                success: true
+            });
+        } else {
+            const errorText = await response.text();
+            console.log('Sentence transformer error:', errorText);
+            return res.status(500).json({ error: 'Sentence transformer error', details: errorText });
         }
-
-        return res.status(500).json({ 
-            error: 'No suitable tokenization method found',
-            message: 'Consider using different NLP tasks that are supported by Inference API'
-        });
-
     } catch (error) {
-        console.error('Tokenization error:', error);
-        res.status(500).json({ error: 'Failed to tokenize text' });
+        console.log('Tokenization error:', error.message);
+        return res.status(500).json({ error: 'Tokenization error', details: error.message });
     }
 });
 
